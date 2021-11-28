@@ -8,95 +8,276 @@
  * @format
  */
 
-import React from 'react';
+import React, {useCallback, useEffect, useState} from 'react';
 import {
+  FlatList,
+  Image,
   SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
   Text,
+  TextInput,
   useColorScheme,
   View,
+  Dimensions,
+  TouchableOpacity,
 } from 'react-native';
+import {getPhotos} from './src/api/photos';
+import {debounce} from 'lodash';
 
-import {
-  Colors,
-  DebugInstructions,
-  Header,
-  LearnMoreLinks,
-  ReloadInstructions,
-} from 'react-native/Libraries/NewAppScreen';
-
-const Section: React.FC<{
-  title: string;
-}> = ({children, title}) => {
-  const isDarkMode = useColorScheme() === 'dark';
-  return (
-    <View style={styles.sectionContainer}>
-      <Text
-        style={[
-          styles.sectionTitle,
-          {
-            color: isDarkMode ? Colors.white : Colors.black,
-          },
-        ]}>
-        {title}
-      </Text>
-      <Text
-        style={[
-          styles.sectionDescription,
-          {
-            color: isDarkMode ? Colors.light : Colors.dark,
-          },
-        ]}>
-        {children}
-      </Text>
-    </View>
-  );
-};
+const DEVICE_WIDTH = Dimensions.get('window').width;
 
 const App = () => {
-  const isDarkMode = useColorScheme() === 'dark';
+  const [photos, setPhotos] = useState([]);
 
-  const backgroundStyle = {
-    backgroundColor: isDarkMode ? Colors.darker : Colors.lighter,
+  const [numOfColum, setColum] = useState("4");
+
+  const [pageNum, setPagenum] = useState(1);
+
+  const [searchText, setText] = useState("");
+
+  //did mount
+  useEffect(() => {
+    // getPhotosData(searchText, pageNum);
+  }, []);
+
+  const getPhotosData = async (searchData: string, pageVar: number) => {
+    try {
+      const result = await getPhotos(searchData, pageVar);
+
+      if (!result) {
+        return null;
+      }
+
+      const photosResult = result?.photos?.photo ?? [];
+      const pagNumGet = result?.photos?.page ?? 1;
+      const existingPhotos = [...photos, ...photosResult];
+
+      setPhotos(existingPhotos);
+      setPagenum(pagNumGet);
+    } catch (err) {}
+  };
+
+
+
+  const searchThis = (text) => {
+    setText(text);
+    getPhotosData(text,1);
+
+  }
+
+  
+  const handler = useCallback(debounce(searchThis, 500), []);
+
+  const renderTextInputPhoto = () => {
+    return (
+      <View style={styles.textWrapper}>
+        <TextInput placeholder="Search"
+        onChangeText={handler}
+        // value={searchText}
+        />
+      </View>
+    );
+  };
+
+  const onNumberSelect = (text) => {
+    if(text == ''){
+     return setColum("")
+     
+    }
+
+    if(text>10){
+      return setColum("10")
+    }
+
+    if(text <1){
+       setColum("1")
+    }
+    if(text>0 && text <=10){
+      setColum(text)
+    }
+
+
+
+    // setColum(text)
+  }
+
+  const renderTextInputRows = () => {
+    return (
+      <View style={styles.textRowWrapper}>
+        <Text>N :</Text>
+        <TextInput 
+        value={numOfColum}
+        keyboardType="numeric"
+        onChangeText={onNumberSelect}
+        />
+      </View>
+    );
+  };
+
+  const computeHeightWidthImage = () => {
+    const newNumColum = numOfColum? numOfColum:1
+    const eachWidth = (DEVICE_WIDTH - (newNumColum - 1) * 10) / newNumColum;
+    return eachWidth;
+  };
+
+  const renderEachPhoto = ({item}) => {
+    // https://live.staticflickr.com/{server-id}/{id}_{secret}_{size-suffix}.jpg
+
+    const serverId = item?.server;
+    const id = item?.id;
+    const secret = item?.secret;
+
+    const url = `https://live.staticflickr.com/${serverId}/${id}_${secret}.jpg`;
+
+    const width = computeHeightWidthImage();
+
+    return (
+      <Image
+        source={{uri: url}}
+        style={[styles.eachImage, {height: width, width: width}]}
+        resizeMode="cover"
+      />
+    );
+  };
+
+  const onViewMore = () => {
+    const newPageNum = pageNum + 1;
+    getPhotosData(searchText, newPageNum);
+  };
+
+  const renderFooter = () => {
+    
+    if(!photos.length){
+      return null
+    }
+
+    return (
+      <TouchableOpacity style={styles.footerComp} onPress={onViewMore}>
+        <Text style={styles.footerTex}>View More</Text>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderBackfill = () => {
+    return(
+      <View style={styles.backFill} >
+        <Text>No Photos! Time to start adding new</Text>
+      </View>
+    )
+  }
+
+
+
+  const renderFlatlist = () => {
+    return (
+      <FlatList
+        data={photos}
+        renderItem={renderEachPhoto}
+        numColumns={numOfColum?numOfColum:1}
+        key={numOfColum}
+        style={styles.flatlistSty}
+        keyExtractor={item => item.id}
+        ListFooterComponent={renderFooter()}
+        ListEmptyComponent={renderBackfill()}
+      />
+    );
   };
 
   return (
-    <SafeAreaView style={backgroundStyle}>
-      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
-      <ScrollView
-        contentInsetAdjustmentBehavior="automatic"
-        style={backgroundStyle}>
-        <Header />
-        <View
-          style={{
-            backgroundColor: isDarkMode ? Colors.black : Colors.white,
-          }}>
-          <Section title="Step One">
-            Edit <Text style={styles.highlight}>App.tsx</Text> to change this
-            screen and then come back to see your edits.
-          </Section>
-          <Section title="See Your Changes">
-            <ReloadInstructions />
-          </Section>
-          <Section title="Debug">
-            <DebugInstructions />
-          </Section>
-          <Section title="Learn More">
-            Read the docs to discover what to do next:
-          </Section>
-          <LearnMoreLinks />
-        </View>
-      </ScrollView>
+    <SafeAreaView style={styles.sectionContainer}>
+      <View style={styles.textInpyWrapper}>
+        {renderTextInputPhoto()}
+        {renderTextInputRows()}
+      </View>
+      {renderFlatlist()}
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
   sectionContainer: {
-    marginTop: 32,
-    paddingHorizontal: 24,
+    flex: 1,
+    paddingHorizontal: 0,
+    paddingTop: 20,
+  },
+  flatlistSty: {
+    marginHorizontal: -5,
+  },
+  textWrapper: {
+    flex: 3,
+    borderRadius: 20,
+    // alignItems:'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 3,
+    },
+    shadowOpacity: 0.29,
+    shadowRadius: 4.65,
+
+    elevation: 3,
+    paddingHorizontal: 10,
+  },
+  eachImage: {
+    margin: 5,
+  },
+  columWrapper: {
+    justifyContent: 'space-between',
+  },
+  footerComp: {
+    alignSelf: 'center',
+    marginTop: 20,
+    marginBottom: 10,
+    // padding:10,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 3,
+    },
+    shadowOpacity: 0.29,
+    shadowRadius: 4.65,
+
+    elevation: 3,
+    // alignItems:'center',
+    // justifyContent:'center'
+  },
+  footerTex: {
+    fontSize: 12,
+    marginVertical: 10,
+    marginHorizontal: 20,
+    // textAlignVertical:'center'
+  },
+  textRowWrapper: {
+    flex: 1,
+    borderRadius: 40,
+    flexDirection: 'row',
+    marginLeft: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 3,
+    },
+    shadowOpacity: 0.29,
+    shadowRadius: 4.65,
+
+    elevation: 3,
+  },
+  backFill:{
+    alignItems:'center',
+    justifyContent:'center',
+    flex:1,
+    backgroundColor:'red',
+    flexGrow:1
+  },
+  textInpyWrapper: {
+    flexDirection: 'row',
+    marginHorizontal: 20,
+    marginBottom: 30,
   },
   sectionTitle: {
     fontSize: 24,
